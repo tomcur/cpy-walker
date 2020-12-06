@@ -1,0 +1,23 @@
+[package]
+name = "cpy-walker"
+version = "0.1.0"
+edition = "2018"
+authors = ["Thomas Churchman <thomas@kepow.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/tomcur/cpy-walker"
+description = "A pure-Rust CPython remote-process memory walker"
+keywords = ["cpython", "memory", "decoding", "process"]
+
+[package.metadata.docs.rs]
+# To run locally:
+# RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features --no-deps --open
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+tracing = "0.1"
+thiserror = "1.0"
+remoteprocess = { version = "0.3" }
+ascii = "1.0"
+memoffset = "0.6"
