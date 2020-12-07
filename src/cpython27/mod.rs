@@ -13,6 +13,7 @@ const PY_SIZE_T: usize = std::mem::size_of::<usize>();
 pub enum PyTypedObject {
     Type(PyTypeObject),
     Object(PyTypeObject, PyObject),
+    None(PyNoneObject),
     Str(PyStringObject),
     Unicode(PyUnicodeObject),
     Tuple(PyTupleObject),
@@ -35,6 +36,7 @@ impl BytesObject for PyBytesObject {
 impl TypedObject for PyTypedObject {
     type TypeObject = PyTypeObject;
     type Object = PyObject;
+    type NoneObject = PyNoneObject;
     type BytesObject = PyBytesObject;
     type StringObject = PyStringObject;
     type UnicodeObject = PyUnicodeObject;
@@ -46,6 +48,7 @@ impl TypedObject for PyTypedObject {
         match self {
             PyTypedObject::Type(_) => Type::Type,
             PyTypedObject::Object(_, _) => Type::Object,
+            PyTypedObject::None(_) => Type::None,
             PyTypedObject::Str(_) => Type::String,
             PyTypedObject::Unicode(_) => Type::Unicode,
             PyTypedObject::Tuple(_) => Type::Tuple,
@@ -65,6 +68,13 @@ impl TypedObject for PyTypedObject {
     fn as_object(self) -> Option<(PyTypeObject, PyObject)> {
         if let PyTypedObject::Object(object_type, object) = self {
             Some((object_type, object))
+        } else {
+            None
+        }
+    }
+    fn as_none(self) -> Option<Self::NoneObject> {
+        if let PyTypedObject::None(object) = self {
+            Some(object)
         } else {
             None
         }
@@ -382,6 +392,46 @@ impl VarObject for PyVarObject {
                 (self.me + offset).try_deref(mem)?
             };
             Ok(Some(dict_ptr.try_deref(mem)?))
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct PyNoneObject {
+    me: PyPointer,
+    object: bindings::PyObject,
+}
+
+impl PyNoneObject {
+    pub const SIZE: usize = std::mem::size_of::<bindings::PyObject>();
+}
+
+impl TryDeref for PyNoneObject {
+    type Pointer = PyPointer;
+
+    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
+        let b: [u8; Self::SIZE] = mem
+            .get_vec(pointer.address(), Self::SIZE)?
+            .try_into()
+            .expect("const size");
+
+        Ok(Self {
+            me: pointer,
+            object: unsafe { std::mem::transmute(b) },
+        })
+    }
+}
+
+impl NoneObject for PyNoneObject {
+    type Object = PyObject;
+
+    fn to_object(&self) -> Self::Object {
+        PyObject {
+            me: self.me,
+            object: bindings::PyObject {
+                ob_refcnt: self.object.ob_refcnt,
+                ob_type: self.object.ob_type,
+            },
         }
     }
 }

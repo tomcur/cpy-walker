@@ -15,6 +15,7 @@ pub enum DecodedData {
         object_type_name: String,
         attributes: HashMap<String, DataPointer>,
     },
+    None,
     Bytes(Vec<u8>),
     String(String),
     Tuple(Vec<DataPointer>),
@@ -85,6 +86,7 @@ where
                 },
             }
         }
+        Type::None => DecodedData::None,
         Type::Bytes => DecodedData::Bytes(typed.as_bytes().unwrap().read(mem)?),
         Type::String => DecodedData::String(typed.as_string().unwrap().read(mem)?),
         Type::Unicode => DecodedData::String(typed.as_unicode().unwrap().read(mem)?),

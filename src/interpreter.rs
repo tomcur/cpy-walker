@@ -4,6 +4,7 @@ use crate::memory::Memory;
 pub enum Type {
     Type,
     Object,
+    None,
     Bytes,
     String,
     Unicode,
@@ -15,6 +16,7 @@ pub enum Type {
 pub trait TypedObject {
     type TypeObject: TypeObject<Object = Self::Object>;
     type Object: Object<TypeObject = Self::TypeObject>;
+    type NoneObject: NoneObject<Object = Self::Object>;
     type BytesObject: BytesObject;
     type StringObject: StringObject;
     type UnicodeObject: UnicodeObject<Object = Self::Object>;
@@ -25,6 +27,7 @@ pub trait TypedObject {
     fn object_type(&self) -> Type;
     fn as_type(self) -> Option<Self::TypeObject>;
     fn as_object(self) -> Option<(Self::TypeObject, Self::Object)>;
+    fn as_none(self) -> Option<Self::NoneObject>;
     fn as_bytes(self) -> Option<Self::BytesObject>;
     fn as_string(self) -> Option<Self::StringObject>;
     fn as_unicode(self) -> Option<Self::UnicodeObject>;
@@ -90,6 +93,11 @@ pub trait VarObject {
     fn to_object(&self) -> Self::Object;
     fn ob_size(&self) -> isize;
     fn attributes(&self, mem: &impl Memory) -> Result<Option<Self::DictObject>>;
+}
+
+pub trait NoneObject {
+    type Object: Object;
+    fn to_object(&self) -> Self::Object;
 }
 
 pub trait BytesObject {
