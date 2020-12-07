@@ -150,19 +150,6 @@ impl TypedObject for PyTypedObject {
     }
 }
 
-// impl TryDecode for TypedObject {
-//    fn try_decode(self, mem: &impl Memory) -> Result<DecodedData> {
-//        use TypedObject::*;
-//
-//        let data = match self {
-//            Type(object) => object.name(),
-//            _ => unimplemented!("asd"),
-//        };
-//
-//        Ok(data)
-//    }
-//}
-
 #[derive(Copy, Clone, Debug)]
 pub struct PyPointer {
     address: usize,
