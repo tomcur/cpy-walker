@@ -20,6 +20,7 @@ pub enum PyTypedObject {
     Tuple(PyTupleObject),
     List(PyListObject),
     Dict(PyDictObject),
+    Bool(PyBoolObject),
     Int(PyIntObject),
     Float(PyFloatObject),
 }
@@ -46,6 +47,7 @@ impl TypedObject for PyTypedObject {
     type TupleObject = PyTupleObject;
     type ListObject = PyListObject;
     type DictObject = PyDictObject;
+    type BoolObject = PyBoolObject;
     type IntObject = PyIntObject;
     type FloatObject = PyFloatObject;
 
@@ -59,6 +61,7 @@ impl TypedObject for PyTypedObject {
             PyTypedObject::Tuple(_) => Type::Tuple,
             PyTypedObject::List(_) => Type::List,
             PyTypedObject::Dict(_) => Type::Dict,
+            PyTypedObject::Bool(_) => Type::Bool,
             PyTypedObject::Int(_) => Type::Int,
             PyTypedObject::Float(_) => Type::Float,
         }
@@ -119,6 +122,13 @@ impl TypedObject for PyTypedObject {
     }
     fn as_dict(self) -> Option<Self::DictObject> {
         if let PyTypedObject::Dict(object) = self {
+            Some(object)
+        } else {
+            None
+        }
+    }
+    fn as_bool(self) -> Option<Self::BoolObject> {
+        if let PyTypedObject::Bool(object) = self {
             Some(object)
         } else {
             None
@@ -289,6 +299,7 @@ impl TypeObject for PyTypeObject {
             "tuple" => PyTypedObject::Tuple(object.me.try_deref(mem)?),
             "list" => PyTypedObject::List(object.me.try_deref(mem)?),
             "dict" => PyTypedObject::Dict(object.me.try_deref(mem)?),
+            "bool" => PyTypedObject::Bool(object.me.try_deref(mem)?),
             "int" => PyTypedObject::Int(object.me.try_deref(mem)?),
             "float" => PyTypedObject::Float(object.me.try_deref(mem)?),
             _ => PyTypedObject::Object(self.clone(), object),
@@ -798,6 +809,50 @@ impl DictObject for PyDictObject {
         }
 
         Ok(entries)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PyBoolObject {
+    me: PyPointer,
+    object: bindings::PyIntObject,
+}
+
+impl PyBoolObject {
+    pub const SIZE: usize = std::mem::size_of::<bindings::PyIntObject>();
+}
+
+impl TryDeref for PyBoolObject {
+    type Pointer = PyPointer;
+
+    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
+        let b: [u8; Self::SIZE] = mem
+            .get_vec(pointer.address(), Self::SIZE)?
+            .try_into()
+            .expect("const size");
+
+        Ok(Self {
+            me: pointer,
+            object: unsafe { std::mem::transmute(b) },
+        })
+    }
+}
+
+impl BoolObject for PyBoolObject {
+    type Object = PyObject;
+
+    fn to_object(&self) -> PyObject {
+        PyObject {
+            me: self.me,
+            object: bindings::PyObject {
+                ob_refcnt: self.object.ob_refcnt,
+                ob_type: self.object.ob_type,
+            },
+        }
+    }
+
+    fn value(&self) -> bool {
+        self.object.ob_ival != 0
     }
 }
 

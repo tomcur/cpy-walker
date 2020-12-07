@@ -22,6 +22,7 @@ pub enum DecodedData {
     Tuple(Vec<DataPointer>),
     List(Vec<DataPointer>),
     Dict(HashMap<DataPointer, DataPointer>),
+    Bool(bool),
     Int(BigInt),
     Float(f64),
     Error(Error),
@@ -133,6 +134,7 @@ where
 
             DecodedData::Dict(entries)
         }
+        Type::Bool => DecodedData::Bool(typed.as_bool().unwrap().value()),
         Type::Int => DecodedData::Int(typed.as_int().unwrap().read(mem)?),
         Type::Float => DecodedData::Float(typed.as_float().unwrap().value()),
     };

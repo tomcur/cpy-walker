@@ -13,6 +13,7 @@ pub enum Type {
     Tuple,
     List,
     Dict,
+    Bool,
     Int,
     Float,
 }
@@ -27,6 +28,7 @@ pub trait TypedObject {
     type TupleObject: TupleObject<Object = Self::Object>;
     type ListObject: ListObject<Object = Self::Object>;
     type DictObject: DictObject<Object = Self::Object>;
+    type BoolObject: BoolObject<Object = Self::Object>;
     type IntObject: IntObject<Object = Self::Object>;
     type FloatObject: FloatObject<Object = Self::Object>;
 
@@ -40,6 +42,7 @@ pub trait TypedObject {
     fn as_tuple(self) -> Option<Self::TupleObject>;
     fn as_list(self) -> Option<Self::ListObject>;
     fn as_dict(self) -> Option<Self::DictObject>;
+    fn as_bool(self) -> Option<Self::BoolObject>;
     fn as_int(self) -> Option<Self::IntObject>;
     fn as_float(self) -> Option<Self::FloatObject>;
 }
@@ -158,6 +161,12 @@ pub trait DictObject {
     type DictEntry: DictEntry<Object = Self::Object>;
     fn to_object(&self) -> Self::Object;
     fn entries(&self, mem: &impl Memory) -> Result<Vec<Self::DictEntry>>;
+}
+
+pub trait BoolObject {
+    type Object: Object;
+    fn to_object(&self) -> Self::Object;
+    fn value(&self) -> bool;
 }
 
 pub trait IntObject {
