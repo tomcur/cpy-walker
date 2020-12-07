@@ -1,3 +1,4 @@
+use num_bigint::BigInt;
 use std::collections::{HashMap, VecDeque};
 
 use crate::error::{Error, Result};
@@ -21,6 +22,8 @@ pub enum DecodedData {
     Tuple(Vec<DataPointer>),
     List(Vec<DataPointer>),
     Dict(HashMap<DataPointer, DataPointer>),
+    Int(BigInt),
+    Float(f64),
     Error(Error),
 }
 
@@ -130,6 +133,8 @@ where
 
             DecodedData::Dict(entries)
         }
+        Type::Int => DecodedData::Int(typed.as_int().unwrap().read(mem)?),
+        Type::Float => DecodedData::Float(typed.as_float().unwrap().value()),
     };
 
     Ok(Decoded {

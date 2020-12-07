@@ -1,3 +1,5 @@
+use num_bigint::BigInt;
+
 use crate::error::{Error, Result};
 use crate::memory::Memory;
 
@@ -11,6 +13,8 @@ pub enum Type {
     Tuple,
     List,
     Dict,
+    Int,
+    Float,
 }
 
 pub trait TypedObject {
@@ -23,6 +27,8 @@ pub trait TypedObject {
     type TupleObject: TupleObject<Object = Self::Object>;
     type ListObject: ListObject<Object = Self::Object>;
     type DictObject: DictObject<Object = Self::Object>;
+    type IntObject: IntObject<Object = Self::Object>;
+    type FloatObject: FloatObject<Object = Self::Object>;
 
     fn object_type(&self) -> Type;
     fn as_type(self) -> Option<Self::TypeObject>;
@@ -34,6 +40,8 @@ pub trait TypedObject {
     fn as_tuple(self) -> Option<Self::TupleObject>;
     fn as_list(self) -> Option<Self::ListObject>;
     fn as_dict(self) -> Option<Self::DictObject>;
+    fn as_int(self) -> Option<Self::IntObject>;
+    fn as_float(self) -> Option<Self::FloatObject>;
 }
 
 pub trait TryDeref: Sized {
@@ -150,4 +158,16 @@ pub trait DictObject {
     type DictEntry: DictEntry<Object = Self::Object>;
     fn to_object(&self) -> Self::Object;
     fn entries(&self, mem: &impl Memory) -> Result<Vec<Self::DictEntry>>;
+}
+
+pub trait IntObject {
+    type Object: Object;
+    fn to_object(&self) -> Self::Object;
+    fn read(&self, mem: &impl Memory) -> Result<BigInt>;
+}
+
+pub trait FloatObject {
+    type Object: Object;
+    fn to_object(&self) -> Self::Object;
+    fn value(&self) -> f64;
 }

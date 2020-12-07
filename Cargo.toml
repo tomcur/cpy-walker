@@ -21,3 +21,4 @@ thiserror = "1.0"
 remoteprocess = { version = "0.3" }
 ascii = "1.0"
 memoffset = "0.6"
+num-bigint = "0.3"
