@@ -272,6 +272,7 @@ where
     fn downcast(&self, mem: &impl Memory, object: I::Object) -> Result<I::TypedObject> {
         let typed = match self.name.as_str() {
             "type" => PyTypedObject::Type(object.me().try_deref_me(mem)?),
+            "NoneType" => PyTypedObject::None(object.me().try_deref_me(mem)?),
             "classobj" => PyTypedObject::Class(object.me().try_deref_me(mem)?),
             "instance" => PyTypedObject::Instance(object.me().try_deref_me(mem)?),
             "str" => PyTypedObject::Str(object.me().try_deref_me(mem)?),
