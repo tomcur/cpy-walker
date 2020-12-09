@@ -6,7 +6,7 @@ use crate::interpreter::*;
 use crate::memory::Memory;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DataPointer(usize);
+pub struct DataPointer(pub usize);
 
 #[derive(Debug)]
 pub enum DecodedData {
@@ -17,6 +17,11 @@ pub enum DecodedData {
         attributes: HashMap<String, DataPointer>,
     },
     None,
+    Instance {
+        instance_class: DataPointer,
+        instance_class_name: String,
+        attributes: HashMap<String, DataPointer>,
+    },
     Bytes(Vec<u8>),
     String(String),
     Tuple(Vec<DataPointer>),
@@ -60,7 +65,7 @@ where
 
     let decoded = match typed.object_type() {
         Type::Type => DecodedData::Type(typed.as_type().unwrap().name().to_string()),
-        Type::Object => {
+        Type::Object | Type::Class => {
             let (_type_object, object) = typed.as_object().unwrap();
             let attr_dict = object.attributes(mem)?;
 
@@ -88,6 +93,34 @@ where
             }
         }
         Type::None => DecodedData::None,
+        Type::Instance => {
+            let instance = typed.as_instance().unwrap();
+            let class = instance.class(mem)?;
+            let attr_dict = instance.attributes(mem)?;
+
+            DecodedData::Instance {
+                instance_class: DataPointer(class.to_object().me().address()),
+                instance_class_name: class.name().to_owned(),
+                attributes: {
+                    let mut attributes = HashMap::new();
+                    for (_hash, key, value) in attr_dict
+                        .entries(mem)?
+                        .into_iter()
+                        .map(|entry| entry.take())
+                    {
+                        // If the input data is is bad, this might recurse forever.
+                        if let DecodedData::String(string) =
+                            step::<I, M>(mem, key, graph, queue, memoized_types)?.object_data
+                        {
+                            attributes.insert(string, DataPointer(value.me().address()));
+                            queue.push_back(value);
+                        }
+                    }
+                    attributes
+                },
+            }
+        }
+
         Type::Bytes => DecodedData::Bytes(typed.as_bytes().unwrap().read(mem)?),
         Type::String => DecodedData::String(typed.as_string().unwrap().read(mem)?),
         Type::Unicode => DecodedData::String(typed.as_unicode().unwrap().read(mem)?),

@@ -9,6 +9,8 @@ pub enum Type {
     Type,
     Object,
     None,
+    Class,
+    Instance,
     Bytes,
     String,
     Unicode,
@@ -28,6 +30,8 @@ pub trait Interpreter: Copy + Clone + std::fmt::Debug {
     type TypeObject: TypeObject<Self> + TryDeref;
     type Object: Object<Self> + TryDeref;
     type VarObject: VarObject<Self> + TryDeref;
+    type ClassObject: ClassObject<Self> + TryDeref;
+    type InstanceObject: InstanceObject<Self> + TryDeref;
     type NoneObject: NoneObject<Self> + TryDeref;
     type BytesObject: BytesObject<Self>;
     type StringObject: StringObject<Self> + TryDeref;
@@ -116,6 +120,8 @@ pub trait TypedObject<I: Interpreter> {
     fn as_type(self) -> Option<I::TypeObject>;
     fn as_object(self) -> Option<(I::TypeObject, I::Object)>;
     fn as_none(self) -> Option<I::NoneObject>;
+    fn as_class(self) -> Option<I::ClassObject>;
+    fn as_instance(self) -> Option<I::InstanceObject>;
     fn as_bytes(self) -> Option<I::BytesObject>;
     fn as_string(self) -> Option<I::StringObject>;
     fn as_unicode(self) -> Option<I::UnicodeObject>;
@@ -158,6 +164,18 @@ pub trait VarObject<I: Interpreter<VarObject = Self>> {
     fn to_object(&self) -> I::Object;
     fn ob_size(&self) -> isize;
     fn attributes(&self, mem: &impl Memory) -> Result<Option<I::DictObject>>;
+}
+
+pub trait ClassObject<I: Interpreter> {
+    fn to_object(&self) -> I::Object;
+    fn name(&self) -> &str;
+    fn bases(&self, mem: &impl Memory) -> Result<Option<I::ClassObject>>;
+}
+
+pub trait InstanceObject<I: Interpreter> {
+    fn to_object(&self) -> I::Object;
+    fn class(&self, mem: &impl Memory) -> Result<I::ClassObject>;
+    fn attributes(&self, mem: &impl Memory) -> Result<I::DictObject>;
 }
 
 pub trait NoneObject<I: Interpreter> {

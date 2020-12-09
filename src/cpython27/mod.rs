@@ -5,9 +5,9 @@ use std::marker::PhantomData;
 
 use crate::error::Result;
 use crate::interpreter::{
-    BoolObject, BytesObject, DictEntry, DictObject, FloatObject, IntObject, Interpreter,
-    ListObject, NoneObject, Object, Pointer, StringObject, TryDeref, TupleObject, Type, TypeObject,
-    TypedObject, UnicodeObject, VarObject, PY_SIZE_T,
+    BoolObject, BytesObject, ClassObject, DictEntry, DictObject, FloatObject, InstanceObject,
+    IntObject, Interpreter, ListObject, NoneObject, Object, Pointer, StringObject, TryDeref,
+    TupleObject, Type, TypeObject, TypedObject, UnicodeObject, VarObject, PY_SIZE_T,
 };
 use crate::memory::Memory;
 
@@ -23,6 +23,8 @@ impl Interpreter for Cpython2_7 {
     type Object = PyObject<Self>;
     type VarObject = PyVarObject<Self>;
     type NoneObject = PyNoneObject<Self>;
+    type ClassObject = PyClassObject<Self>;
+    type InstanceObject = PyInstanceObject<Self>;
     type BytesObject = PyBytesObject<Self>;
     type StringObject = PyStringObject<Self>;
     type UnicodeObject = PyUnicodeObject<Self>;
@@ -47,6 +49,8 @@ impl Interpreter for Cpython2_7SmallString {
     type Object = PyObject<Self>;
     type VarObject = PyVarObject<Self>;
     type NoneObject = PyNoneObject<Self>;
+    type ClassObject = PyClassObject<Self>;
+    type InstanceObject = PyInstanceObject<Self>;
     type BytesObject = PyBytesObject<Self>;
     type StringObject = PySmallStringObject<Self>;
     type UnicodeObject = PyUnicodeObject<Self>;
@@ -64,6 +68,8 @@ pub enum PyTypedObject<I: Interpreter> {
     Type(I::TypeObject),
     Object(I::TypeObject, I::Object),
     None(I::NoneObject),
+    Class(I::ClassObject),
+    Instance(I::InstanceObject),
     Str(I::StringObject),
     Unicode(I::UnicodeObject),
     Tuple(I::TupleObject),
@@ -93,6 +99,8 @@ impl<I: Interpreter> TypedObject<I> for PyTypedObject<I> {
             PyTypedObject::Type(_) => Type::Type,
             PyTypedObject::Object(_, _) => Type::Object,
             PyTypedObject::None(_) => Type::None,
+            PyTypedObject::Class(_) => Type::Class,
+            PyTypedObject::Instance(_) => Type::Instance,
             PyTypedObject::Str(_) => Type::String,
             PyTypedObject::Unicode(_) => Type::Unicode,
             PyTypedObject::Tuple(_) => Type::Tuple,
@@ -121,6 +129,20 @@ impl<I: Interpreter> TypedObject<I> for PyTypedObject<I> {
     }
     fn as_none(self) -> Option<I::NoneObject> {
         if let PyTypedObject::None(object) = self {
+            Some(object)
+        } else {
+            None
+        }
+    }
+    fn as_class(self) -> Option<I::ClassObject> {
+        if let PyTypedObject::Class(object) = self {
+            Some(object)
+        } else {
+            None
+        }
+    }
+    fn as_instance(self) -> Option<I::InstanceObject> {
+        if let PyTypedObject::Instance(object) = self {
             Some(object)
         } else {
             None
@@ -250,6 +272,8 @@ where
     fn downcast(&self, mem: &impl Memory, object: I::Object) -> Result<I::TypedObject> {
         let typed = match self.name.as_str() {
             "type" => PyTypedObject::Type(object.me().try_deref_me(mem)?),
+            "class" => PyTypedObject::Class(object.me().try_deref_me(mem)?),
+            "instance" => PyTypedObject::Instance(object.me().try_deref_me(mem)?),
             "str" => PyTypedObject::Str(object.me().try_deref_me(mem)?),
             "unicode" => PyTypedObject::Unicode(object.me().try_deref_me(mem)?),
             "tuple" => PyTypedObject::Tuple(object.me().try_deref_me(mem)?),
@@ -410,6 +434,126 @@ impl<I: Interpreter<Object = PyObject<I>>> NoneObject<I> for PyNoneObject<I> {
             },
             _interp: std::marker::PhantomData,
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct PyClassObject<I> {
+    me: Pointer,
+    object: python27_sys::PyClassObject,
+    name: String,
+    _interp: PhantomData<I>,
+}
+
+impl<I> std::fmt::Debug for PyClassObject<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PyClassObject")
+            .field("me", &self.me)
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
+pub const PY_CLASS_OBJECT_SIZE: usize = std::mem::size_of::<python27_sys::PyClassObject>();
+
+impl<I: Interpreter> TryDeref for PyClassObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_CLASS_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_CLASS_OBJECT_SIZE)?
+            .try_into()
+            .expect("const size");
+
+        let class_object: python27_sys::PyClassObject = unsafe { std::mem::transmute(b) };
+        let class_name_string: I::StringObject =
+            Pointer::new(class_object.cl_name as usize).try_deref_me(mem)?;
+
+        Ok(Self {
+            me: pointer,
+            object: class_object,
+            name: class_name_string.read(mem)?,
+            _interp: PhantomData,
+        })
+    }
+}
+
+impl<I: Interpreter<Object = PyObject<I>>> ClassObject<I> for PyClassObject<I> {
+    fn to_object(&self) -> I::Object {
+        PyObject {
+            me: self.me,
+            object: bindings::PyObject {
+                ob_refcnt: self.object.ob_refcnt,
+                ob_type: self.object.ob_type as *mut bindings::_typeobject,
+            },
+            _interp: std::marker::PhantomData,
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn bases(&self, mem: &impl Memory) -> Result<Option<I::ClassObject>> {
+        let class_ptr: Pointer = Pointer::new(self.object.cl_bases as usize);
+        if class_ptr.null() {
+            Ok(None)
+        } else {
+            Ok(Some(class_ptr.try_deref_me(mem)?))
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct PyInstanceObject<I> {
+    me: Pointer,
+    object: python27_sys::PyInstanceObject,
+    _interp: PhantomData<I>,
+}
+
+impl<I> std::fmt::Debug for PyInstanceObject<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PyInstanceObject")
+            .field("me", &self.me)
+            .finish()
+    }
+}
+
+pub const PY_INSTANCE_OBJECT_SIZE: usize = std::mem::size_of::<python27_sys::PyInstanceObject>();
+
+impl<I> TryDeref for PyInstanceObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_INSTANCE_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_INSTANCE_OBJECT_SIZE)?
+            .try_into()
+            .expect("const size");
+
+        Ok(Self {
+            me: pointer,
+            object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
+        })
+    }
+}
+
+impl<I: Interpreter<Object = PyObject<I>>> InstanceObject<I> for PyInstanceObject<I> {
+    fn to_object(&self) -> I::Object {
+        PyObject {
+            me: self.me,
+            object: bindings::PyObject {
+                ob_refcnt: self.object.ob_refcnt,
+                ob_type: self.object.ob_type as *mut bindings::_typeobject,
+            },
+            _interp: std::marker::PhantomData,
+        }
+    }
+
+    fn class(&self, mem: &impl Memory) -> Result<I::ClassObject> {
+        let class_ptr: Pointer = Pointer::new(self.object.in_class as usize);
+        class_ptr.try_deref_me(mem)
+    }
+
+    fn attributes(&self, mem: &impl Memory) -> Result<I::DictObject> {
+        let dict_ptr: Pointer = Pointer::new(self.object.in_dict as usize);
+        dict_ptr.try_deref_me(mem)
     }
 }
 

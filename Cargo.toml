@@ -22,3 +22,4 @@ remoteprocess = { version = "0.3" }
 ascii = "1.0"
 memoffset = "0.6"
 num-bigint = "0.3"
+python27-sys = "0.5"
