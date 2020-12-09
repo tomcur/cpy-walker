@@ -1054,3 +1054,75 @@ impl<I: Interpreter<Object = PyObject<I>>> FloatObject<I> for PyFloatObject<I> {
         self.object.ob_fval
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use anyhow::bail;
+    use std::io::{BufRead, BufReader, Read};
+    use std::path::PathBuf;
+    use std::process::{Child, Command, Stdio};
+
+    use super::*;
+    use crate::walker::{walk, DataPointer, DecodedData};
+
+    #[test]
+    fn works() -> std::result::Result<(), anyhow::Error> {
+        let mut child = Command::new(
+            [env!("CARGO_MANIFEST_DIR"), "test-programs", "python27.py"]
+                .iter()
+                .collect::<PathBuf>(),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+        let pid = child.id();
+        let mut stdout = child.stdout.unwrap();
+
+        let mut line = String::new();
+        BufReader::new(stdout).read_line(&mut line)?;
+        let pointer: usize = line.trim().parse().expect("memory address");
+
+        let mem = crate::connect(pid as i32)?;
+
+        let ptr = Pointer::new(pointer);
+        let obj: PyObject<Cpython2_7> = ptr.try_deref_me(&mem)?;
+
+        let graph = walk::<Cpython2_7, _>(&mem, ptr);
+
+        println!("{:#x?}", graph);
+        if let Some(DecodedData::List(list)) = graph.get(&DataPointer(pointer)) {
+            assert_eq!(list.len(), 3);
+            match graph.get(&list[0]) {
+                Some(&DecodedData::String(ref str)) => assert_eq!(str, "hello world"),
+                _ => bail!("Expected a string"),
+            }
+            match graph.get(&list[1]) {
+                Some(&DecodedData::Int(ref int)) => assert_eq!(int, &num_bigint::BigInt::from(42)),
+                _ => bail!("Expected an int"),
+            }
+            match graph.get(&list[2]) {
+                Some(&DecodedData::Instance {
+                    ref instance_class_name,
+                    ref attributes,
+                    ..
+                }) => {
+                    assert_eq!(instance_class_name, "Something");
+                    match attributes
+                        .get("anything")
+                        .and_then(|pointer| graph.get(pointer))
+                    {
+                        Some(DecodedData::String(str)) => assert_eq!(str, "I'm here!"),
+                        _ => bail!("Expected an attribute"),
+                    }
+                }
+                _ => bail!("Expected an instance"),
+            }
+        } else {
+            bail!("Expected a list")
+        }
+
+        Ok(())
+    }
+}
