@@ -1,3 +1,6 @@
+// From:
+// https://github.com/benfred/py-spy/blob/dd48a65aaad03dc79d46c118db2e6bdf04081fe5/src/python_bindings/v2_7_15.rs
+
 // Generated bindings for python v2.7.15
 #![allow(dead_code)]
 #![allow(non_upper_case_globals)]
