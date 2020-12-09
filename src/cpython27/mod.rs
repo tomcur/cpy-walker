@@ -1091,7 +1091,6 @@ mod tests {
 
         let graph = walk::<Cpython2_7, _>(&mem, ptr);
 
-        println!("{:#x?}", graph);
         if let Some(DecodedData::List(list)) = graph.get(&DataPointer(pointer)) {
             assert_eq!(list.len(), 3);
             match graph.get(&list[0]) {
