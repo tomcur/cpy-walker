@@ -35,6 +35,30 @@ impl Interpreter for Cpython2_7 {
     type FloatObject = PyFloatObject<Self>;
 }
 
+/// An interpreter marker type for decoding of CPython 2.7 memory with small
+/// string objects. It is not clear to me when this is the case, but it seems
+/// some CPython 2.7-compatible targets have strings that are 4 bytes smaller.
+#[derive(Debug, Copy, Clone)]
+pub struct Cpython2_7SmallString;
+
+impl Interpreter for Cpython2_7SmallString {
+    type TypedObject = PyTypedObject<Self>;
+    type TypeObject = PyTypeObject<Self>;
+    type Object = PyObject<Self>;
+    type VarObject = PyVarObject<Self>;
+    type NoneObject = PyNoneObject<Self>;
+    type BytesObject = PyBytesObject<Self>;
+    type StringObject = PySmallStringObject<Self>;
+    type UnicodeObject = PyUnicodeObject<Self>;
+    type TupleObject = PyTupleObject<Self>;
+    type ListObject = PyListObject<Self>;
+    type DictEntry = PyDictEntry<Self>;
+    type DictObject = PyDictObject<Self>;
+    type BoolObject = PyBoolObject<Self>;
+    type IntObject = PyIntObject<Self>;
+    type FloatObject = PyFloatObject<Self>;
+}
+
 #[derive(Clone, Debug)]
 pub enum PyTypedObject<I: Interpreter> {
     Type(I::TypeObject),
