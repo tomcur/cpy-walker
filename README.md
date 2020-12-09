@@ -11,19 +11,48 @@ The library only knows how to read objects and follow object pointers.
 It cannot find objects by itself; you need to provide a memory address to start from.
 
 ```rust
+use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+
 use cpy_walker::cpython27::*;
 use cpy_walker::interpreter::*;
 use cpy_walker::memory::{Memory, Process};
 use cpy_walker::walker::walk;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mem = cpy_walker::connect(1234)?;
+/// This spawns a Python process, but you can connect to pre-exisitng processes as well.
+fn spawn_child() -> Result<(i32, usize), Box<dyn std::error::Error>> {
+    let child = Command::new(
+        [env!("CARGO_MANIFEST_DIR"), "test-programs", "python27.py"]
+            .iter()
+            .collect::<PathBuf>(),
+    )
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::null())
+    .spawn()?;
 
-    let ptr = Pointer::new(0xcafe);
+    let pid = child.id();
+    let stdout = child.stdout.unwrap();
+
+    let mut line = String::new();
+    BufReader::new(stdout).read_line(&mut line)?;
+    let pointer: usize = line.trim().parse().expect("memory address");
+
+    Ok((pid as i32, pointer))
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (pid, pointer) = spawn_child()?;
+    let mem = cpy_walker::connect(pid)?;
+    let ptr = Pointer::new(pointer);
+
     println!(
         "Data graph: {:#x?}",
         walk::<Cpython2_7, _>(&mem, ptr)
     );
+
+    Ok(())
 }
 ```
 
