@@ -19,11 +19,10 @@ use cpy_walker::walker::walk;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mem = cpy_walker::connect(1234)?;
 
-    let ptr = PyPointer::new(0xcafe);
-    let obj: PyObject = ptr.try_deref(&mem)?;
+    let ptr = Pointer::new(0xcafe);
     println!(
         "Data graph: {:#x?}",
-        walk::<_, PyObject, _>(&mem, ptr)
+        walk::<Cpython2_7, _>(&mem, ptr)
     );
 }
 ```

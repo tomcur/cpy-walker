@@ -3,6 +3,8 @@ use num_bigint::BigInt;
 use crate::error::{Error, Result};
 use crate::memory::Memory;
 
+pub const PY_SIZE_T: usize = std::mem::size_of::<usize>();
+
 pub enum Type {
     Type,
     Object,
@@ -18,45 +20,81 @@ pub enum Type {
     Float,
 }
 
-pub trait TypedObject {
-    type TypeObject: TypeObject<Object = Self::Object>;
-    type Object: Object<TypeObject = Self::TypeObject>;
-    type NoneObject: NoneObject<Object = Self::Object>;
-    type BytesObject: BytesObject;
-    type StringObject: StringObject;
-    type UnicodeObject: UnicodeObject<Object = Self::Object>;
-    type TupleObject: TupleObject<Object = Self::Object>;
-    type ListObject: ListObject<Object = Self::Object>;
-    type DictObject: DictObject<Object = Self::Object>;
-    type BoolObject: BoolObject<Object = Self::Object>;
-    type IntObject: IntObject<Object = Self::Object>;
-    type FloatObject: FloatObject<Object = Self::Object>;
-
-    fn object_type(&self) -> Type;
-    fn as_type(self) -> Option<Self::TypeObject>;
-    fn as_object(self) -> Option<(Self::TypeObject, Self::Object)>;
-    fn as_none(self) -> Option<Self::NoneObject>;
-    fn as_bytes(self) -> Option<Self::BytesObject>;
-    fn as_string(self) -> Option<Self::StringObject>;
-    fn as_unicode(self) -> Option<Self::UnicodeObject>;
-    fn as_tuple(self) -> Option<Self::TupleObject>;
-    fn as_list(self) -> Option<Self::ListObject>;
-    fn as_dict(self) -> Option<Self::DictObject>;
-    fn as_bool(self) -> Option<Self::BoolObject>;
-    fn as_int(self) -> Option<Self::IntObject>;
-    fn as_float(self) -> Option<Self::FloatObject>;
+/// Implementors of this trait collect together specific CPython object
+/// implementations. This allows mixing and matching of implementations. Usually
+/// this trait will be implemented by a marker type.
+pub trait Interpreter: Copy + Clone + std::fmt::Debug {
+    type TypedObject: TypedObject<Self>;
+    type TypeObject: TypeObject<Self> + TryDeref;
+    type Object: Object<Self> + TryDeref;
+    type VarObject: VarObject<Self> + TryDeref;
+    type NoneObject: NoneObject<Self> + TryDeref;
+    type BytesObject: BytesObject<Self>;
+    type StringObject: StringObject<Self> + TryDeref;
+    type UnicodeObject: UnicodeObject<Self> + TryDeref;
+    type TupleObject: TupleObject<Self> + TryDeref;
+    type ListObject: ListObject<Self> + TryDeref;
+    type DictEntry: DictEntry<Self>;
+    type DictObject: DictObject<Self> + TryDeref;
+    type BoolObject: BoolObject<Self> + TryDeref;
+    type IntObject: IntObject<Self> + TryDeref;
+    type FloatObject: FloatObject<Self> + TryDeref;
 }
 
-pub trait TryDeref: Sized {
-    type Pointer: Pointer;
-    fn try_deref(mem: &impl Memory, pointer: Self::Pointer) -> Result<Self>;
+#[derive(Copy, Clone, Debug)]
+pub struct Pointer {
+    address: usize,
 }
 
-pub trait Pointer {
-    fn address(&self) -> usize;
-    fn null(&self) -> bool;
-    fn try_deref<O: TryDeref<Pointer = Self>>(&self, mem: &impl Memory) -> Result<O>;
-    fn address_checked(&self) -> Result<usize> {
+impl std::ops::Add<usize> for Pointer {
+    type Output = Self;
+
+    fn add(mut self, other: usize) -> Self {
+        self.address += other;
+        self
+    }
+}
+
+impl std::ops::Add<isize> for Pointer {
+    type Output = Self;
+
+    fn add(mut self, other: isize) -> Self {
+        self.address = (self.address as isize + other) as usize;
+        self
+    }
+}
+
+impl Pointer {
+    pub const SIZE: usize = PY_SIZE_T;
+
+    pub fn new(address: usize) -> Self {
+        Self { address }
+    }
+
+    pub fn get_usize(&self, mem: &impl Memory) -> Result<usize> {
+        mem.get_usize(self.address)
+    }
+
+    pub fn deref_c_str(&self, mem: &impl Memory, max_length: Option<usize>) -> Result<String> {
+        mem.get_c_str(self.address_checked()?, max_length)
+    }
+
+    pub fn address(&self) -> usize {
+        self.address
+    }
+
+    pub fn null(&self) -> bool {
+        self.address == 0
+    }
+
+    pub fn try_deref_me<O: TryDeref>(&self, mem: &impl Memory) -> Result<O> {
+        if self.null() {
+            return Err(Error::NullPointer);
+        }
+        O::try_deref(mem, *self)
+    }
+
+    pub fn address_checked(&self) -> Result<usize> {
         if self.null() {
             Err(Error::NullPointer)
         } else {
@@ -65,61 +103,74 @@ pub trait Pointer {
     }
 }
 
-pub trait TypeObject {
-    type Object: Object<TypeObject = Self>;
-    type VarObject: VarObject<Object = Self::Object>;
-    type TypedObject: TypedObject<TypeObject = Self, Object = Self::Object>;
+impl TryDeref for Pointer {
+    fn try_deref(mem: &impl Memory, pointer: Self) -> Result<Self> {
+        Ok(Self {
+            address: pointer.get_usize(mem)?,
+        })
+    }
+}
 
-    fn to_var_object(&self) -> Self::VarObject;
+pub trait TypedObject<I: Interpreter> {
+    fn object_type(&self) -> Type;
+    fn as_type(self) -> Option<I::TypeObject>;
+    fn as_object(self) -> Option<(I::TypeObject, I::Object)>;
+    fn as_none(self) -> Option<I::NoneObject>;
+    fn as_bytes(self) -> Option<I::BytesObject>;
+    fn as_string(self) -> Option<I::StringObject>;
+    fn as_unicode(self) -> Option<I::UnicodeObject>;
+    fn as_tuple(self) -> Option<I::TupleObject>;
+    fn as_list(self) -> Option<I::ListObject>;
+    fn as_dict(self) -> Option<I::DictObject>;
+    fn as_bool(self) -> Option<I::BoolObject>;
+    fn as_int(self) -> Option<I::IntObject>;
+    fn as_float(self) -> Option<I::FloatObject>;
+}
+
+pub trait TryDeref: Sized {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self>;
+}
+
+pub trait TypeObject<I: Interpreter> {
+    fn to_var_object(&self) -> I::VarObject;
     fn name(&self) -> &str;
     fn tp_basicsize(&self) -> isize;
     fn tp_itemsize(&self) -> isize;
     fn tp_dictoffset(&self) -> isize;
-    fn downcast(&self, mem: &impl Memory, object: Self::Object) -> Result<Self::TypedObject>;
+    fn downcast(&self, mem: &impl Memory, object: I::Object) -> Result<I::TypedObject>;
 }
 
-pub trait Object {
-    type Pointer: Pointer;
-    type TypeObject: TypeObject<Object = Self>;
-    type DictObject: DictObject<Object = Self>;
-    fn me(&self) -> Self::Pointer;
-    fn ob_type(&self, mem: &impl Memory) -> Result<Self::TypeObject>;
-    fn ob_type_pointer(&self) -> Self::Pointer;
-    fn attributes(&self, mem: &impl Memory) -> Result<Option<Self::DictObject>>;
+pub trait Object<I: Interpreter<Object = Self>> {
+    fn me(&self) -> Pointer;
+    fn ob_type(&self, mem: &impl Memory) -> Result<I::TypeObject>;
+    fn ob_type_pointer(&self) -> Pointer;
+    fn attributes(&self, mem: &impl Memory) -> Result<Option<I::DictObject>>;
 
-    fn downcast(
-        self,
-        mem: &impl Memory,
-    ) -> Result<<<Self as Object>::TypeObject as TypeObject>::TypedObject>
+    fn downcast(self, mem: &impl Memory) -> Result<I::TypedObject>
     where
         Self: Sized,
     {
-        self.ob_type(mem)?.downcast(mem, self)
+        self.ob_type(mem)?.downcast(mem, self as I::Object)
     }
 }
 
-pub trait VarObject {
-    type Object: Object;
-    type DictObject: DictObject;
-    fn to_object(&self) -> Self::Object;
+pub trait VarObject<I: Interpreter<VarObject = Self>> {
+    fn to_object(&self) -> I::Object;
     fn ob_size(&self) -> isize;
-    fn attributes(&self, mem: &impl Memory) -> Result<Option<Self::DictObject>>;
+    fn attributes(&self, mem: &impl Memory) -> Result<Option<I::DictObject>>;
 }
 
-pub trait NoneObject {
-    type Object: Object;
-    fn to_object(&self) -> Self::Object;
+pub trait NoneObject<I: Interpreter> {
+    fn to_object(&self) -> I::Object;
 }
 
-pub trait BytesObject {
-    type VarObject: VarObject;
-    fn to_var_object(&self) -> Self::VarObject;
+pub trait BytesObject<I: Interpreter> {
+    fn to_var_object(&self) -> I::VarObject;
     fn read(&self, mem: &impl Memory) -> Result<Vec<u8>>;
 }
 
-pub trait StringObject {
-    type VarObject: VarObject;
-    fn to_var_object(&self) -> Self::VarObject;
+pub trait StringObject<I: Interpreter> {
+    fn to_var_object(&self) -> I::VarObject;
     fn read_bytes(&self, mem: &impl Memory) -> Result<Vec<u8>>;
 
     fn read(&self, mem: &impl Memory) -> Result<String> {
@@ -127,56 +178,45 @@ pub trait StringObject {
     }
 }
 
-pub trait UnicodeObject {
-    type Object: Object;
-    fn to_object(&self) -> Self::Object;
+pub trait UnicodeObject<I: Interpreter> {
+    fn to_object(&self) -> I::Object;
     fn read_bytes(&self, mem: &impl Memory) -> Result<Vec<u8>>;
     fn read(&self, mem: &impl Memory) -> Result<String>;
 }
 
-pub trait TupleObject {
-    type Object: Object;
-    type VarObject: VarObject;
-    fn to_var_object(&self) -> Self::VarObject;
-    fn items(&self, mem: &impl Memory) -> Result<Vec<Self::Object>>;
+pub trait TupleObject<I: Interpreter> {
+    fn to_var_object(&self) -> I::VarObject;
+    fn items(&self, mem: &impl Memory) -> Result<Vec<I::Object>>;
 }
 
-pub trait ListObject {
-    type Object: Object;
-    type VarObject: VarObject;
-    fn to_var_object(&self) -> Self::VarObject;
-    fn items(&self, mem: &impl Memory) -> Result<Vec<Self::Object>>;
+pub trait ListObject<I: Interpreter> {
+    fn to_var_object(&self) -> I::VarObject;
+    fn items(&self, mem: &impl Memory) -> Result<Vec<I::Object>>;
 }
 
-pub trait DictEntry {
-    type Object: Object;
+pub trait DictEntry<I: Interpreter> {
     fn hash(&self) -> usize;
-    fn key(&self) -> &Self::Object;
-    fn value(&self) -> &Self::Object;
-    fn take(self) -> (usize, Self::Object, Self::Object);
+    fn key(&self) -> &I::Object;
+    fn value(&self) -> &I::Object;
+    fn take(self) -> (usize, I::Object, I::Object);
 }
 
-pub trait DictObject {
-    type Object: Object;
-    type DictEntry: DictEntry<Object = Self::Object>;
-    fn to_object(&self) -> Self::Object;
-    fn entries(&self, mem: &impl Memory) -> Result<Vec<Self::DictEntry>>;
+pub trait DictObject<I: Interpreter> {
+    fn to_object(&self) -> I::Object;
+    fn entries(&self, mem: &impl Memory) -> Result<Vec<I::DictEntry>>;
 }
 
-pub trait BoolObject {
-    type Object: Object;
-    fn to_object(&self) -> Self::Object;
+pub trait BoolObject<I: Interpreter> {
+    fn to_object(&self) -> I::Object;
     fn value(&self) -> bool;
 }
 
-pub trait IntObject {
-    type Object: Object;
-    fn to_object(&self) -> Self::Object;
+pub trait IntObject<I: Interpreter> {
+    fn to_object(&self) -> I::Object;
     fn read(&self, mem: &impl Memory) -> Result<BigInt>;
 }
 
-pub trait FloatObject {
-    type Object: Object;
-    fn to_object(&self) -> Self::Object;
+pub trait FloatObject<I: Interpreter> {
+    fn to_object(&self) -> I::Object;
     fn value(&self) -> f64;
 }

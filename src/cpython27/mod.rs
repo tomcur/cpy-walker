@@ -1,35 +1,61 @@
 use memoffset::offset_of;
 use num_bigint::BigInt;
 use std::convert::TryInto;
+use std::marker::PhantomData;
 
-use crate::error::{Error, Result};
-use crate::interpreter::*;
+use crate::error::Result;
+use crate::interpreter::{
+    BoolObject, BytesObject, DictEntry, DictObject, FloatObject, IntObject, Interpreter,
+    ListObject, NoneObject, Object, Pointer, StringObject, TryDeref, TupleObject, Type, TypeObject,
+    TypedObject, UnicodeObject, VarObject, PY_SIZE_T,
+};
 use crate::memory::Memory;
 
 mod bindings;
 
-const PY_SIZE_T: usize = std::mem::size_of::<usize>();
+/// An interpreter marker type for decoding of CPython 2.7 memory.
+#[derive(Debug, Copy, Clone)]
+pub struct Cpython2_7;
+
+impl Interpreter for Cpython2_7 {
+    type TypedObject = PyTypedObject<Self>;
+    type TypeObject = PyTypeObject<Self>;
+    type Object = PyObject<Self>;
+    type VarObject = PyVarObject<Self>;
+    type NoneObject = PyNoneObject<Self>;
+    type BytesObject = PyBytesObject<Self>;
+    type StringObject = PyStringObject<Self>;
+    type UnicodeObject = PyUnicodeObject<Self>;
+    type TupleObject = PyTupleObject<Self>;
+    type ListObject = PyListObject<Self>;
+    type DictEntry = PyDictEntry<Self>;
+    type DictObject = PyDictObject<Self>;
+    type BoolObject = PyBoolObject<Self>;
+    type IntObject = PyIntObject<Self>;
+    type FloatObject = PyFloatObject<Self>;
+}
 
 #[derive(Clone, Debug)]
-pub enum PyTypedObject {
-    Type(PyTypeObject),
-    Object(PyTypeObject, PyObject),
-    None(PyNoneObject),
-    Str(PyStringObject),
-    Unicode(PyUnicodeObject),
-    Tuple(PyTupleObject),
-    List(PyListObject),
-    Dict(PyDictObject),
-    Bool(PyBoolObject),
-    Int(PyIntObject),
-    Float(PyFloatObject),
+pub enum PyTypedObject<I: Interpreter> {
+    Type(I::TypeObject),
+    Object(I::TypeObject, I::Object),
+    None(I::NoneObject),
+    Str(I::StringObject),
+    Unicode(I::UnicodeObject),
+    Tuple(I::TupleObject),
+    List(I::ListObject),
+    Dict(I::DictObject),
+    Bool(I::BoolObject),
+    Int(I::IntObject),
+    Float(I::FloatObject),
 }
 
 // Hacky: this does not exist in Python 2.7.
-pub struct PyBytesObject;
-impl BytesObject for PyBytesObject {
-    type VarObject = PyVarObject;
-    fn to_var_object(&self) -> Self::VarObject {
+pub struct PyBytesObject<I> {
+    _interp: PhantomData<I>,
+}
+impl<I: Interpreter> BytesObject<I> for PyBytesObject<I> {
+    fn to_var_object(&self) -> I::VarObject {
         unimplemented!("Bytes does not exist in Python 2.7")
     }
     fn read(&self, _mem: &impl Memory) -> Result<Vec<u8>> {
@@ -37,20 +63,7 @@ impl BytesObject for PyBytesObject {
     }
 }
 
-impl TypedObject for PyTypedObject {
-    type TypeObject = PyTypeObject;
-    type Object = PyObject;
-    type NoneObject = PyNoneObject;
-    type BytesObject = PyBytesObject;
-    type StringObject = PyStringObject;
-    type UnicodeObject = PyUnicodeObject;
-    type TupleObject = PyTupleObject;
-    type ListObject = PyListObject;
-    type DictObject = PyDictObject;
-    type BoolObject = PyBoolObject;
-    type IntObject = PyIntObject;
-    type FloatObject = PyFloatObject;
-
+impl<I: Interpreter> TypedObject<I> for PyTypedObject<I> {
     fn object_type(&self) -> Type {
         match self {
             PyTypedObject::Type(_) => Type::Type,
@@ -67,7 +80,7 @@ impl TypedObject for PyTypedObject {
         }
     }
 
-    fn as_type(self) -> Option<Self::TypeObject> {
+    fn as_type(self) -> Option<I::TypeObject> {
         if let PyTypedObject::Type(object) = self {
             Some(object)
         } else {
@@ -75,73 +88,73 @@ impl TypedObject for PyTypedObject {
         }
     }
 
-    fn as_object(self) -> Option<(PyTypeObject, PyObject)> {
+    fn as_object(self) -> Option<(I::TypeObject, I::Object)> {
         if let PyTypedObject::Object(object_type, object) = self {
             Some((object_type, object))
         } else {
             None
         }
     }
-    fn as_none(self) -> Option<Self::NoneObject> {
+    fn as_none(self) -> Option<I::NoneObject> {
         if let PyTypedObject::None(object) = self {
             Some(object)
         } else {
             None
         }
     }
-    fn as_bytes(self) -> Option<Self::BytesObject> {
+    fn as_bytes(self) -> Option<I::BytesObject> {
         None
     }
-    fn as_string(self) -> Option<Self::StringObject> {
+    fn as_string(self) -> Option<I::StringObject> {
         if let PyTypedObject::Str(object) = self {
             Some(object)
         } else {
             None
         }
     }
-    fn as_unicode(self) -> Option<Self::UnicodeObject> {
+    fn as_unicode(self) -> Option<I::UnicodeObject> {
         if let PyTypedObject::Unicode(object) = self {
             Some(object)
         } else {
             None
         }
     }
-    fn as_tuple(self) -> Option<Self::TupleObject> {
+    fn as_tuple(self) -> Option<I::TupleObject> {
         if let PyTypedObject::Tuple(object) = self {
             Some(object)
         } else {
             None
         }
     }
-    fn as_list(self) -> Option<Self::ListObject> {
+    fn as_list(self) -> Option<I::ListObject> {
         if let PyTypedObject::List(object) = self {
             Some(object)
         } else {
             None
         }
     }
-    fn as_dict(self) -> Option<Self::DictObject> {
+    fn as_dict(self) -> Option<I::DictObject> {
         if let PyTypedObject::Dict(object) = self {
             Some(object)
         } else {
             None
         }
     }
-    fn as_bool(self) -> Option<Self::BoolObject> {
+    fn as_bool(self) -> Option<I::BoolObject> {
         if let PyTypedObject::Bool(object) = self {
             Some(object)
         } else {
             None
         }
     }
-    fn as_int(self) -> Option<Self::IntObject> {
+    fn as_int(self) -> Option<I::IntObject> {
         if let PyTypedObject::Int(object) = self {
             Some(object)
         } else {
             None
         }
     }
-    fn as_float(self) -> Option<Self::FloatObject> {
+    fn as_float(self) -> Option<I::FloatObject> {
         if let PyTypedObject::Float(object) = self {
             Some(object)
         } else {
@@ -150,89 +163,20 @@ impl TypedObject for PyTypedObject {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct PyPointer {
-    address: usize,
-}
-
-impl std::ops::Add<usize> for PyPointer {
-    type Output = Self;
-
-    fn add(mut self, other: usize) -> Self {
-        self.address += other;
-        self
-    }
-}
-
-impl std::ops::Add<isize> for PyPointer {
-    type Output = Self;
-
-    fn add(mut self, other: isize) -> Self {
-        self.address = (self.address as isize + other) as usize;
-        self
-    }
-}
-
-impl PyPointer {
-    pub const SIZE: usize = PY_SIZE_T;
-
-    pub fn new(address: usize) -> Self {
-        Self { address }
-    }
-
-    fn get_usize(&self, mem: &impl Memory) -> Result<usize> {
-        mem.get_usize(self.address)
-    }
-
-    fn deref_c_str(&self, mem: &impl Memory, max_length: Option<usize>) -> Result<String> {
-        mem.get_c_str(self.address_checked()?, max_length)
-    }
-}
-
-impl TryDeref for PyPointer {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        Ok(Self {
-            address: pointer.get_usize(mem)?,
-        })
-    }
-}
-
-impl Pointer for PyPointer {
-    fn address(&self) -> usize {
-        self.address
-    }
-
-    fn null(&self) -> bool {
-        self.address == 0
-    }
-
-    fn try_deref<O: TryDeref<Pointer = PyPointer>>(&self, mem: &impl Memory) -> Result<O> {
-        if self.null() {
-            return Err(Error::NullPointer);
-        }
-        O::try_deref(mem, *self)
-    }
-}
-
 #[derive(Clone, Debug)]
-pub struct PyTypeObject {
-    me: PyPointer,
+pub struct PyTypeObject<I> {
+    me: Pointer,
     object: bindings::PyTypeObject,
     name: String,
+    _interp: PhantomData<I>,
 }
 
-impl PyTypeObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyTypeObject>();
-}
+pub const PY_TYPE_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyTypeObject>();
 
-impl TryDeref for PyTypeObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I: Interpreter> TryDeref for PyTypeObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_TYPE_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_TYPE_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
@@ -241,17 +185,17 @@ impl TryDeref for PyTypeObject {
         Ok(Self {
             me: pointer,
             object: type_object,
-            name: PyPointer::new(type_object.tp_name as usize).deref_c_str(mem, Some(1_000))?,
+            name: Pointer::new(type_object.tp_name as usize).deref_c_str(mem, Some(1_000))?,
+            _interp: PhantomData,
         })
     }
 }
 
-impl TypeObject for PyTypeObject {
-    type Object = PyObject;
-    type VarObject = PyVarObject;
-    type TypedObject = PyTypedObject;
-
-    fn to_var_object(&self) -> PyVarObject {
+impl<I: Interpreter> TypeObject<I> for PyTypeObject<I>
+where
+    I: Interpreter<TypeObject = Self, TypedObject = PyTypedObject<I>, VarObject = PyVarObject<I>>,
+{
+    fn to_var_object(&self) -> I::VarObject {
         PyVarObject {
             me: self.me,
             object: bindings::PyVarObject {
@@ -259,6 +203,7 @@ impl TypeObject for PyTypeObject {
                 ob_type: self.object.ob_type,
                 ob_size: self.object.ob_size,
             },
+            _interp: PhantomData,
         }
     }
 
@@ -278,18 +223,18 @@ impl TypeObject for PyTypeObject {
         self.object.tp_dictoffset
     }
 
-    fn downcast(&self, mem: &impl Memory, object: Self::Object) -> Result<Self::TypedObject> {
+    fn downcast(&self, mem: &impl Memory, object: I::Object) -> Result<I::TypedObject> {
         let typed = match self.name.as_str() {
-            "type" => PyTypedObject::Type(object.me.try_deref(mem)?),
-            "str" => PyTypedObject::Str(object.me.try_deref(mem)?),
-            "unicode" => PyTypedObject::Unicode(object.me.try_deref(mem)?),
-            "tuple" => PyTypedObject::Tuple(object.me.try_deref(mem)?),
-            "list" => PyTypedObject::List(object.me.try_deref(mem)?),
-            "dict" => PyTypedObject::Dict(object.me.try_deref(mem)?),
-            "bool" => PyTypedObject::Bool(object.me.try_deref(mem)?),
-            "int" => PyTypedObject::Int(object.me.try_deref(mem)?),
-            "float" => PyTypedObject::Float(object.me.try_deref(mem)?),
-            _ => PyTypedObject::Object(self.clone(), object),
+            "type" => PyTypedObject::Type(object.me().try_deref_me(mem)?),
+            "str" => PyTypedObject::Str(object.me().try_deref_me(mem)?),
+            "unicode" => PyTypedObject::Unicode(object.me().try_deref_me(mem)?),
+            "tuple" => PyTypedObject::Tuple(object.me().try_deref_me(mem)?),
+            "list" => PyTypedObject::List(object.me().try_deref_me(mem)?),
+            "dict" => PyTypedObject::Dict(object.me().try_deref_me(mem)?),
+            "bool" => PyTypedObject::Bool(object.me().try_deref_me(mem)?),
+            "int" => PyTypedObject::Int(object.me().try_deref_me(mem)?),
+            "float" => PyTypedObject::Float(object.me().try_deref_me(mem)?),
+            _ => PyTypedObject::Object((*self).clone(), object),
         };
 
         Ok(typed)
@@ -297,97 +242,87 @@ impl TypeObject for PyTypeObject {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct PyObject {
-    me: PyPointer,
+pub struct PyObject<I> {
+    me: Pointer,
     object: bindings::PyObject,
+    _interp: std::marker::PhantomData<I>,
 }
 
-impl PyObject {
-    const SIZE: usize = std::mem::size_of::<bindings::PyObject>();
-}
+const PY_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyObject>();
 
-impl TryDeref for PyObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: std::marker::PhantomData,
         })
     }
 }
 
-impl Object for PyObject {
-    type Pointer = PyPointer;
-    type TypeObject = PyTypeObject;
-    type DictObject = PyDictObject;
-
-    fn me(&self) -> Self::Pointer {
+impl<I: Interpreter<Object = Self>> Object<I> for PyObject<I> {
+    fn me(&self) -> Pointer {
         self.me
     }
 
-    fn ob_type(&self, mem: &impl Memory) -> Result<Self::TypeObject> {
-        self.ob_type_pointer().try_deref(mem)
+    fn ob_type(&self, mem: &impl Memory) -> Result<I::TypeObject> {
+        self.ob_type_pointer().try_deref_me(mem)
     }
 
-    fn ob_type_pointer(&self) -> Self::Pointer {
-        PyPointer::new(self.object.ob_type as usize)
+    fn ob_type_pointer(&self) -> Pointer {
+        Pointer::new(self.object.ob_type as usize)
     }
 
-    fn attributes(&self, mem: &impl Memory) -> Result<Option<Self::DictObject>> {
-        let dictoffset = self.ob_type(mem)?.object.tp_dictoffset;
+    fn attributes(&self, mem: &impl Memory) -> Result<Option<I::DictObject>> {
+        let dictoffset = self.ob_type(mem)?.tp_dictoffset();
 
         if dictoffset == 0 {
             Ok(None)
         } else {
-            let dict_ptr: PyPointer = (self.me + dictoffset).try_deref(mem)?;
-            Ok(Some(dict_ptr.try_deref(mem)?))
+            let dict_ptr: Pointer = (self.me + dictoffset).try_deref_me(mem)?;
+            Ok(Some(dict_ptr.try_deref_me(mem)?))
         }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct PyVarObject {
-    me: PyPointer,
+pub struct PyVarObject<I> {
+    me: Pointer,
     object: bindings::PyVarObject,
+    _interp: std::marker::PhantomData<I>,
 }
 
-impl PyVarObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyVarObject>();
-}
+pub const PY_VAR_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyVarObject>();
 
-impl TryDeref for PyVarObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyVarObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_VAR_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_VAR_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: std::marker::PhantomData,
         })
     }
 }
 
-impl VarObject for PyVarObject {
-    type Object = PyObject;
-    type DictObject = PyDictObject;
-
-    fn to_object(&self) -> Self::Object {
+impl<I: Interpreter<Object = PyObject<I>, VarObject = Self>> VarObject<I> for PyVarObject<I> {
+    fn to_object(&self) -> I::Object {
         PyObject {
             me: self.me,
             object: bindings::PyObject {
                 ob_refcnt: self.object.ob_refcnt,
                 ob_type: self.object.ob_type,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 
@@ -395,98 +330,91 @@ impl VarObject for PyVarObject {
         self.object.ob_size
     }
 
-    fn attributes(&self, mem: &impl Memory) -> Result<Option<Self::DictObject>> {
-        let tp = self.to_object().ob_type(mem)?;
+    fn attributes(&self, mem: &impl Memory) -> Result<Option<I::DictObject>> {
+        let tp: I::TypeObject = self.to_object().ob_type(mem)?;
         let dictoffset = tp.tp_dictoffset();
 
         if dictoffset == 0 {
             Ok(None)
         } else {
-            let dict_ptr: PyPointer = if dictoffset < 0 {
-                (self.me + dictoffset).try_deref(mem)?
+            let dict_ptr: Pointer = if dictoffset < 0 {
+                (self.me + dictoffset).try_deref_me(mem)?
             } else {
                 let offset = (tp.tp_basicsize()
                     + self.ob_size().abs() * tp.tp_itemsize()
                     + dictoffset) as usize;
                 // Align to full word.
                 let offset = (offset + PY_SIZE_T - 1) / PY_SIZE_T * PY_SIZE_T;
-                (self.me + offset).try_deref(mem)?
+                (self.me + offset).try_deref_me(mem)?
             };
-            Ok(Some(dict_ptr.try_deref(mem)?))
+            Ok(Some(dict_ptr.try_deref_me(mem)?))
         }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct PyNoneObject {
-    me: PyPointer,
+pub struct PyNoneObject<I> {
+    me: Pointer,
     object: bindings::PyObject,
+    _interp: PhantomData<I>,
 }
 
-impl PyNoneObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyObject>();
-}
+pub const PY_NONE_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyObject>();
 
-impl TryDeref for PyNoneObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyNoneObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_NONE_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_NONE_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl NoneObject for PyNoneObject {
-    type Object = PyObject;
-
-    fn to_object(&self) -> Self::Object {
+impl<I: Interpreter<Object = PyObject<I>>> NoneObject<I> for PyNoneObject<I> {
+    fn to_object(&self) -> I::Object {
         PyObject {
             me: self.me,
             object: bindings::PyObject {
                 ob_refcnt: self.object.ob_refcnt,
                 ob_type: self.object.ob_type,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct PyStringObject {
-    me: PyPointer,
+pub struct PyStringObject<I> {
+    me: Pointer,
     object: bindings::PyStringObject,
+    _interp: PhantomData<I>,
 }
 
-impl PyStringObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyStringObject>();
-}
+pub const PY_STRING_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyStringObject>();
 
-impl TryDeref for PyStringObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyStringObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_STRING_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_STRING_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl StringObject for PyStringObject {
-    type VarObject = PyVarObject;
-
-    fn to_var_object(&self) -> PyVarObject {
+impl<I: Interpreter<VarObject = PyVarObject<I>>> StringObject<I> for PyStringObject<I> {
+    fn to_var_object(&self) -> I::VarObject {
         PyVarObject {
             me: self.me,
             object: bindings::PyVarObject {
@@ -494,12 +422,57 @@ impl StringObject for PyStringObject {
                 ob_type: self.object.ob_type,
                 ob_size: self.object.ob_size,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 
     fn read_bytes(&self, mem: &impl Memory) -> Result<Vec<u8>> {
         mem.get_vec(
-            // TODO: The - 4 seems wrong.
+            (self.me + offset_of!(bindings::PyStringObject, ob_sval)).address(),
+            self.object.ob_size as usize,
+        )
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct PySmallStringObject<I> {
+    me: Pointer,
+    object: bindings::PyStringObject,
+    _interp: PhantomData<I>,
+}
+
+impl<I> TryDeref for PySmallStringObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_STRING_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_STRING_OBJECT_SIZE)?
+            .try_into()
+            .expect("const size");
+
+        Ok(Self {
+            me: pointer,
+            object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
+        })
+    }
+}
+
+impl<I: Interpreter<VarObject = PyVarObject<I>>> StringObject<I> for PySmallStringObject<I> {
+    fn to_var_object(&self) -> I::VarObject {
+        PyVarObject {
+            me: self.me,
+            object: bindings::PyVarObject {
+                ob_refcnt: self.object.ob_refcnt,
+                ob_type: self.object.ob_type,
+                ob_size: self.object.ob_size,
+            },
+            _interp: std::marker::PhantomData,
+        }
+    }
+
+    // The - 4 seems wrong, but at least one of the Python 2.7 targets requires
+    // this.
+    fn read_bytes(&self, mem: &impl Memory) -> Result<Vec<u8>> {
+        mem.get_vec(
             (self.me + (offset_of!(bindings::PyStringObject, ob_sval) - 4)).address(),
             self.object.ob_size as usize,
         )
@@ -507,45 +480,44 @@ impl StringObject for PyStringObject {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct PyUnicodeObject {
-    me: PyPointer,
+pub struct PyUnicodeObject<I> {
+    me: Pointer,
     object: bindings::PyStringObject, // Hacky, we should get PyUnicodeObject in the bindings.
+    _interp: PhantomData<I>,
 }
 
-impl PyUnicodeObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyStringObject>();
+pub const PY_UNICODE_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyStringObject>();
 
+impl<I> PyUnicodeObject<I> {
     pub fn size(&self) -> isize {
         self.object.ob_size
     }
 }
 
-impl TryDeref for PyUnicodeObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyUnicodeObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_UNICODE_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_UNICODE_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl UnicodeObject for PyUnicodeObject {
-    type Object = PyObject;
-
-    fn to_object(&self) -> PyObject {
+impl<I: Interpreter<Object = PyObject<I>>> UnicodeObject<I> for PyUnicodeObject<I> {
+    fn to_object(&self) -> I::Object {
         PyObject {
             me: self.me,
             object: bindings::PyObject {
                 ob_refcnt: self.object.ob_refcnt,
                 ob_type: self.object.ob_type,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 
@@ -562,41 +534,38 @@ impl UnicodeObject for PyUnicodeObject {
             self.object.ob_size as usize,
         )?;
 
-        Ok(String::from_utf16_lossy(&bytes).to_string())
+        Ok(String::from_utf16_lossy(&bytes))
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PyTupleObject {
-    me: PyPointer,
+pub struct PyTupleObject<I> {
+    me: Pointer,
     object: bindings::PyTupleObject,
+    _interp: PhantomData<I>,
 }
 
-impl PyTupleObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyTupleObject>();
-}
+pub const PY_TUPLE_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyTupleObject>();
 
-impl TryDeref for PyTupleObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyTupleObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_TUPLE_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_TUPLE_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl TupleObject for PyTupleObject {
-    type Object = PyObject;
-    type VarObject = PyVarObject;
-
-    fn to_var_object(&self) -> PyVarObject {
+impl<I: Interpreter<Object = PyObject<I>, VarObject = PyVarObject<I>>> TupleObject<I>
+    for PyTupleObject<I>
+{
+    fn to_var_object(&self) -> I::VarObject {
         PyVarObject {
             me: self.me,
             object: bindings::PyVarObject {
@@ -604,18 +573,19 @@ impl TupleObject for PyTupleObject {
                 ob_type: self.object.ob_type,
                 ob_size: self.object.ob_size,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 
-    fn items(&self, mem: &impl Memory) -> Result<Vec<Self::Object>> {
+    fn items(&self, mem: &impl Memory) -> Result<Vec<I::Object>> {
         let pointer =
-            PyPointer::new((&self.object.ob_item as *const *mut bindings::PyObject) as usize);
+            Pointer::new((&self.object.ob_item as *const *mut bindings::PyObject) as usize);
 
         let size = self.object.ob_size as usize;
 
         let mut items = Vec::with_capacity(size);
         for idx in 0..size {
-            let object = (pointer + idx * PyPointer::SIZE).try_deref(mem)?;
+            let object: I::Object = (pointer + idx * Pointer::SIZE).try_deref_me(mem)?;
             items.push(object)
         }
 
@@ -624,36 +594,33 @@ impl TupleObject for PyTupleObject {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PyListObject {
-    me: PyPointer,
+pub struct PyListObject<I> {
+    me: Pointer,
     object: bindings::PyListObject,
+    _interp: PhantomData<I>,
 }
 
-impl PyListObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyListObject>();
-}
+pub const PY_LIST_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyListObject>();
 
-impl TryDeref for PyListObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyListObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_LIST_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_LIST_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl ListObject for PyListObject {
-    type Object = PyObject;
-    type VarObject = PyVarObject;
-
-    fn to_var_object(&self) -> PyVarObject {
+impl<I: Interpreter<Object = PyObject<I>, VarObject = PyVarObject<I>>> ListObject<I>
+    for PyListObject<I>
+{
+    fn to_var_object(&self) -> I::VarObject {
         PyVarObject {
             me: self.me,
             object: bindings::PyVarObject {
@@ -661,18 +628,18 @@ impl ListObject for PyListObject {
                 ob_type: self.object.ob_type,
                 ob_size: self.object.ob_size,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 
-    fn items(&self, mem: &impl Memory) -> Result<Vec<Self::Object>> {
-        let list_pointer = PyPointer::new(self.object.ob_item as usize);
+    fn items(&self, mem: &impl Memory) -> Result<Vec<I::Object>> {
+        let list_pointer = Pointer::new(self.object.ob_item as usize);
         let size = self.object.ob_size as usize;
 
         let mut items = Vec::with_capacity(size);
         for idx in 0..size {
-            let object_pointer: PyPointer =
-                (list_pointer + idx * PyPointer::SIZE).try_deref(mem)?;
-            let object = object_pointer.try_deref(mem)?;
+            let object_pointer: Pointer = (list_pointer + idx * Pointer::SIZE).try_deref_me(mem)?;
+            let object = object_pointer.try_deref_me(mem)?;
             items.push(object)
         }
 
@@ -681,41 +648,40 @@ impl ListObject for PyListObject {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PyDictEntry {
+pub struct PyDictEntry<I> {
     hash: usize,
-    key: PyObject,
-    value: PyObject,
+    key: PyObject<I>,
+    value: PyObject<I>,
 }
 
-impl DictEntry for PyDictEntry {
-    type Object = PyObject;
-
+impl<I: Interpreter<Object = PyObject<I>>> DictEntry<I> for PyDictEntry<I> {
     fn hash(&self) -> usize {
         self.hash
     }
 
-    fn key(&self) -> &PyObject {
+    fn key(&self) -> &I::Object {
         &self.key
     }
 
-    fn value(&self) -> &PyObject {
+    fn value(&self) -> &I::Object {
         &self.value
     }
 
-    fn take(self) -> (usize, Self::Object, Self::Object) {
+    fn take(self) -> (usize, I::Object, I::Object) {
         (self.hash, self.key, self.value)
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PyDictObject {
-    me: PyPointer,
+pub struct PyDictObject<I> {
+    me: Pointer,
     object: bindings::PyDictObject,
+    _interp: PhantomData<I>,
 }
 
-impl PyDictObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyDictObject>();
+pub const PY_DICT_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyDictObject>();
 
+impl<I> PyDictObject<I> {
     pub fn fill(&self) -> isize {
         self.object.ma_fill
     }
@@ -729,40 +695,39 @@ impl PyDictObject {
     }
 }
 
-impl TryDeref for PyDictObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyDictObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_DICT_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_DICT_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl DictObject for PyDictObject {
-    type Object = PyObject;
-    type DictEntry = PyDictEntry;
-
-    fn to_object(&self) -> PyObject {
+impl<I: Interpreter<Object = PyObject<I>, DictEntry = PyDictEntry<I>>> DictObject<I>
+    for PyDictObject<I>
+{
+    fn to_object(&self) -> I::Object {
         PyObject {
             me: self.me,
             object: bindings::PyObject {
                 ob_refcnt: self.object.ob_refcnt,
                 ob_type: self.object.ob_type,
             },
+            _interp: PhantomData,
         }
     }
 
-    fn entries(&self, mem: &impl Memory) -> Result<Vec<Self::DictEntry>> {
+    fn entries(&self, mem: &impl Memory) -> Result<Vec<I::DictEntry>> {
         const ENTRY_SIZE: usize = std::mem::size_of::<bindings::PyDictEntry>();
 
-        let table_addr: PyPointer = PyPointer::new(self.object.ma_table as usize);
+        let table_addr: Pointer = Pointer::new(self.object.ma_table as usize);
 
         let mut slots = self.mask() as usize + 1;
         if slots >= 10_000 {
@@ -781,8 +746,8 @@ impl DictObject for PyDictObject {
 
             let entry: bindings::PyDictEntry = unsafe { std::mem::transmute(b) };
 
-            let key_pointer = PyPointer::new(entry.me_key as usize);
-            let value_pointer = PyPointer::new(entry.me_value as usize);
+            let key_pointer = Pointer::new(entry.me_key as usize);
+            let value_pointer = Pointer::new(entry.me_value as usize);
 
             if key_pointer.null() || value_pointer.null() {
                 continue;
@@ -790,8 +755,8 @@ impl DictObject for PyDictObject {
 
             entries.push(PyDictEntry {
                 hash: entry.me_hash as usize,
-                key: key_pointer.try_deref(mem)?,
-                value: value_pointer.try_deref(mem)?,
+                key: key_pointer.try_deref_me(mem)?,
+                value: value_pointer.try_deref_me(mem)?,
             });
         }
 
@@ -800,41 +765,38 @@ impl DictObject for PyDictObject {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PyBoolObject {
-    me: PyPointer,
+pub struct PyBoolObject<I> {
+    me: Pointer,
     object: bindings::PyIntObject,
+    _interp: PhantomData<I>,
 }
 
-impl PyBoolObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyIntObject>();
-}
+pub const PY_BOOL_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyIntObject>();
 
-impl TryDeref for PyBoolObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyBoolObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_BOOL_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_BOOL_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl BoolObject for PyBoolObject {
-    type Object = PyObject;
-
-    fn to_object(&self) -> PyObject {
+impl<I: Interpreter<Object = PyObject<I>>> BoolObject<I> for PyBoolObject<I> {
+    fn to_object(&self) -> I::Object {
         PyObject {
             me: self.me,
             object: bindings::PyObject {
                 ob_refcnt: self.object.ob_refcnt,
                 ob_type: self.object.ob_type,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 
@@ -844,41 +806,38 @@ impl BoolObject for PyBoolObject {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PyIntObject {
-    me: PyPointer,
+pub struct PyIntObject<I> {
+    me: Pointer,
     object: bindings::PyIntObject,
+    _interp: PhantomData<I>,
 }
 
-impl PyIntObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyIntObject>();
-}
+pub const PY_INT_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyIntObject>();
 
-impl TryDeref for PyIntObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyIntObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_INT_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_INT_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl IntObject for PyIntObject {
-    type Object = PyObject;
-
-    fn to_object(&self) -> PyObject {
+impl<I: Interpreter<Object = PyObject<I>>> IntObject<I> for PyIntObject<I> {
+    fn to_object(&self) -> I::Object {
         PyObject {
             me: self.me,
             object: bindings::PyObject {
                 ob_refcnt: self.object.ob_refcnt,
                 ob_type: self.object.ob_type,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 
@@ -888,41 +847,38 @@ impl IntObject for PyIntObject {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PyFloatObject {
-    me: PyPointer,
+pub struct PyFloatObject<I> {
+    me: Pointer,
     object: bindings::PyFloatObject,
+    _interp: PhantomData<I>,
 }
 
-impl PyFloatObject {
-    pub const SIZE: usize = std::mem::size_of::<bindings::PyFloatObject>();
-}
+pub const PY_FLOAT_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyFloatObject>();
 
-impl TryDeref for PyFloatObject {
-    type Pointer = PyPointer;
-
-    fn try_deref(mem: &impl Memory, pointer: PyPointer) -> Result<Self> {
-        let b: [u8; Self::SIZE] = mem
-            .get_vec(pointer.address(), Self::SIZE)?
+impl<I> TryDeref for PyFloatObject<I> {
+    fn try_deref(mem: &impl Memory, pointer: Pointer) -> Result<Self> {
+        let b: [u8; PY_FLOAT_OBJECT_SIZE] = mem
+            .get_vec(pointer.address(), PY_FLOAT_OBJECT_SIZE)?
             .try_into()
             .expect("const size");
 
         Ok(Self {
             me: pointer,
             object: unsafe { std::mem::transmute(b) },
+            _interp: PhantomData,
         })
     }
 }
 
-impl FloatObject for PyFloatObject {
-    type Object = PyObject;
-
-    fn to_object(&self) -> PyObject {
+impl<I: Interpreter<Object = PyObject<I>>> FloatObject<I> for PyFloatObject<I> {
+    fn to_object(&self) -> I::Object {
         PyObject {
             me: self.me,
             object: bindings::PyObject {
                 ob_refcnt: self.object.ob_refcnt,
                 ob_type: self.object.ob_type,
             },
+            _interp: std::marker::PhantomData,
         }
     }
 

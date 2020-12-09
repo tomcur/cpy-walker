@@ -2,7 +2,7 @@ use num_bigint::BigInt;
 use std::collections::{HashMap, VecDeque};
 
 use crate::error::{Error, Result};
-use crate::interpreter::{Pointer as Ptr, *};
+use crate::interpreter::*;
 use crate::memory::Memory;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -34,20 +34,17 @@ struct Decoded {
     type_object_pointer: DataPointer,
 }
 
-fn step<P, O, M>(
+fn step<I, M>(
     mem: &M,
-    object: O,
+    object: I::Object,
     graph: &mut HashMap<DataPointer, DecodedData>,
-    queue: &mut VecDeque<O>,
-    memoized_types: &mut HashMap<usize, O::TypeObject>,
+    queue: &mut VecDeque<I::Object>,
+    memoized_types: &mut HashMap<usize, I::TypeObject>,
 ) -> Result<Decoded>
 where
-    P: Ptr,
-    O: Object<Pointer = P> + TryDeref<Pointer = P> + Clone + std::fmt::Debug,
+    I: Interpreter,
     M: Memory,
 {
-    // let object: O = pointer.try_deref(mem)?;
-
     let type_ptr = object.ob_type_pointer();
     let type_object = if let Some(type_object) = memoized_types.get(&type_ptr.address()) {
         type_object
@@ -78,7 +75,7 @@ where
                         {
                             // If the input data is is bad, this might recurse forever.
                             if let DecodedData::String(string) =
-                                step::<P, O, M>(mem, key, graph, queue, memoized_types)?.object_data
+                                step::<I, M>(mem, key, graph, queue, memoized_types)?.object_data
                             {
                                 attributes.insert(string, DataPointer(value.me().address()));
                                 queue.push_back(value);
@@ -141,22 +138,21 @@ where
 
     Ok(Decoded {
         object_data: decoded,
-        type_object_data: type_object_data,
+        type_object_data,
         type_object_pointer: DataPointer(type_ptr.address()),
     })
 }
 
-pub fn walk<P, O, M>(mem: &M, pointer: P) -> HashMap<DataPointer, DecodedData>
+pub fn walk<I, M>(mem: &M, pointer: Pointer) -> HashMap<DataPointer, DecodedData>
 where
-    P: Ptr + Copy,
-    O: Object<Pointer = P> + TryDeref<Pointer = P> + Clone + std::fmt::Debug,
+    I: Interpreter,
     M: Memory,
 {
     let mut graph: HashMap<DataPointer, DecodedData> = HashMap::new();
-    let mut queue: VecDeque<O> = VecDeque::new();
-    let mut memoized_types: HashMap<usize, O::TypeObject> = HashMap::new();
+    let mut queue: VecDeque<I::Object> = VecDeque::new();
+    let mut memoized_types: HashMap<usize, I::TypeObject> = HashMap::new();
 
-    if let Ok(object) = pointer.try_deref(mem) {
+    if let Ok(object) = pointer.try_deref_me(mem) {
         queue.push_back(object);
     }
 
@@ -166,7 +162,7 @@ where
             continue;
         }
 
-        match step::<P, O, M>(mem, object, &mut graph, &mut queue, &mut memoized_types) {
+        match step::<I, M>(mem, object, &mut graph, &mut queue, &mut memoized_types) {
             Ok(Decoded {
                 object_data,
                 type_object_data,
