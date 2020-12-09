@@ -20,7 +20,7 @@ use cpy_walker::interpreter::*;
 use cpy_walker::memory::{Memory, Process};
 use cpy_walker::walker::walk;
 
-/// This spawns a Python process, but you can connect to pre-exisitng processes as well.
+/// This spawns a Python process, but you can connect to pre-existing processes as well.
 fn spawn_child() -> Result<(i32, usize), Box<dyn std::error::Error>> {
     let child = Command::new(
         [env!("CARGO_MANIFEST_DIR"), "test-programs", "python27.py"]
