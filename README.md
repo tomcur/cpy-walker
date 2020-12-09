@@ -59,13 +59,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Other crates
 
 See also:
+
 - [py-spy](https://github.com/benfred/py-spy) - a Python process profiler. It can find Python stacks and its locals. Useful to find memory adddress entry-points.
 
 ## License
 
 This project is licensed under the [MIT license].
 
-[MIT license]: https://github.com/tomcur/cpy-walker/blob/master/LICENSE
+[mit license]: https://github.com/tomcur/cpy-walker/blob/master/LICENSE
 
 ### Contribution
 
