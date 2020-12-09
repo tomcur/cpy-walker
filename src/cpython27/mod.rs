@@ -1058,16 +1058,16 @@ impl<I: Interpreter<Object = PyObject<I>>> FloatObject<I> for PyFloatObject<I> {
 #[cfg(test)]
 mod tests {
     use anyhow::bail;
-    use std::io::{BufRead, BufReader, Read};
+    use std::io::{BufRead, BufReader};
     use std::path::PathBuf;
-    use std::process::{Child, Command, Stdio};
+    use std::process::{Command, Stdio};
 
     use super::*;
     use crate::walker::{walk, DataPointer, DecodedData};
 
     #[test]
     fn works() -> std::result::Result<(), anyhow::Error> {
-        let mut child = Command::new(
+        let child = Command::new(
             [env!("CARGO_MANIFEST_DIR"), "test-programs", "python27.py"]
                 .iter()
                 .collect::<PathBuf>(),
@@ -1078,16 +1078,14 @@ mod tests {
         .spawn()?;
 
         let pid = child.id();
-        let mut stdout = child.stdout.unwrap();
+        let stdout = child.stdout.unwrap();
 
         let mut line = String::new();
         BufReader::new(stdout).read_line(&mut line)?;
         let pointer: usize = line.trim().parse().expect("memory address");
 
         let mem = crate::connect(pid as i32)?;
-
         let ptr = Pointer::new(pointer);
-        let obj: PyObject<Cpython2_7> = ptr.try_deref_me(&mem)?;
 
         let graph = walk::<Cpython2_7, _>(&mem, ptr);
 
