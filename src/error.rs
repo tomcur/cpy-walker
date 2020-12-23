@@ -12,4 +12,6 @@ pub enum Error {
     Decode,
     #[error("Could not connect to remote process.")]
     RemoteProcessConnect(#[source] remoteprocess::Error),
+    #[error("Requested size too big")]
+    SizeError,
 }

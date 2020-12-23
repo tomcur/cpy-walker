@@ -1,9 +1,10 @@
-use memoffset::offset_of;
-use num_bigint::BigInt;
 use std::convert::TryInto;
 use std::marker::PhantomData;
 
-use crate::error::Result;
+use memoffset::offset_of;
+use num_bigint::BigInt;
+
+use crate::error::{Error, Result};
 use crate::interpreter::{
     BoolObject, BytesObject, ClassObject, DictEntry, DictObject, FloatObject, InstanceObject,
     IntObject, Interpreter, ListItems, ListObject, NoneObject, Object, Pointer, StringObject,
@@ -597,9 +598,13 @@ impl<I: Interpreter<VarObject = PyVarObject<I>>> StringObject<I> for PyStringObj
     }
 
     fn read_bytes(&self, mem: &impl Memory) -> Result<Vec<u8>> {
+        let size = self.object.ob_size as usize;
+        if size > 2_000 {
+            return Err(Error::SizeError);
+        }
         mem.get_vec(
             (self.me + offset_of!(bindings::PyStringObject, ob_sval)).address(),
-            self.object.ob_size as usize,
+            size,
         )
     }
 }
@@ -642,9 +647,13 @@ impl<I: Interpreter<VarObject = PyVarObject<I>>> StringObject<I> for PySmallStri
     // The - 4 seems wrong, but at least one of the Python 2.7 targets requires
     // this.
     fn read_bytes(&self, mem: &impl Memory) -> Result<Vec<u8>> {
+        let size = self.object.ob_size as usize;
+        if size > 2_000 {
+            return Err(Error::SizeError);
+        }
         mem.get_vec(
             (self.me + (offset_of!(bindings::PyStringObject, ob_sval) - 4)).address(),
-            self.object.ob_size as usize,
+            size,
         )
     }
 }
