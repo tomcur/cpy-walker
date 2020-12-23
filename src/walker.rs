@@ -17,6 +17,10 @@ pub enum DecodedData {
         attributes: HashMap<String, DataPointer>,
     },
     None,
+    Class {
+        class_name: String,
+        bases: Option<DataPointer>,
+    },
     Instance {
         instance_class: DataPointer,
         instance_class_name: String,
@@ -65,7 +69,7 @@ where
 
     let decoded = match typed.object_type() {
         Type::Type => DecodedData::Type(typed.as_type().unwrap().name().to_string()),
-        Type::Object | Type::Class => {
+        Type::Object => {
             let (_type_object, object) = typed.as_object().unwrap();
             let attr_dict = object.attributes(mem)?;
 
@@ -93,6 +97,20 @@ where
             }
         }
         Type::None => DecodedData::None,
+        Type::Class => {
+            let class = typed.as_class().unwrap();
+
+            DecodedData::Class {
+                class_name: class.name().to_owned(),
+                bases: match class.bases(mem)? {
+                    Some(base_class) => {
+                        queue.push_back(base_class.to_object());
+                        Some(DataPointer(base_class.to_object().me().address()))
+                    }
+                    None => None,
+                },
+            }
+        }
         Type::Instance => {
             let instance = typed.as_instance().unwrap();
             let class = instance.class(mem)?;
