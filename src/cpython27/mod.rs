@@ -6,8 +6,9 @@ use std::marker::PhantomData;
 use crate::error::Result;
 use crate::interpreter::{
     BoolObject, BytesObject, ClassObject, DictEntry, DictObject, FloatObject, InstanceObject,
-    IntObject, Interpreter, ListObject, NoneObject, Object, Pointer, StringObject, TryDeref,
-    TupleObject, Type, TypeObject, TypedObject, UnicodeObject, VarObject, PY_SIZE_T,
+    IntObject, Interpreter, ListItems, ListObject, NoneObject, Object, Pointer, StringObject,
+    TryDeref, TupleItems, TupleObject, Type, TypeObject, TypedObject, UnicodeObject, VarObject,
+    PY_SIZE_T,
 };
 use crate::memory::Memory;
 
@@ -746,19 +747,11 @@ impl<I: Interpreter<Object = PyObject<I>, VarObject = PyVarObject<I>>> TupleObje
         }
     }
 
-    fn items(&self, mem: &impl Memory) -> Result<Vec<I::Object>> {
-        let pointer =
-            Pointer::new((&self.object.ob_item as *const *mut bindings::PyObject) as usize);
-
+    fn items<'a, M: Memory>(&self, mem: &'a M) -> TupleItems<'a, I, M> {
+        let tuple_pointer = self.me + offset_of!(bindings::PyTupleObject, ob_item);
         let size = self.object.ob_size as usize;
 
-        let mut items = Vec::with_capacity(size);
-        for idx in 0..size {
-            let object: I::Object = (pointer + idx * Pointer::SIZE).try_deref_me(mem)?;
-            items.push(object)
-        }
-
-        Ok(items)
+        TupleItems::new(mem, tuple_pointer, size)
     }
 }
 
@@ -801,18 +794,11 @@ impl<I: Interpreter<Object = PyObject<I>, VarObject = PyVarObject<I>>> ListObjec
         }
     }
 
-    fn items(&self, mem: &impl Memory) -> Result<Vec<I::Object>> {
+    fn items<'a, M: Memory>(&self, mem: &'a M) -> ListItems<'a, I, M> {
         let list_pointer = Pointer::new(self.object.ob_item as usize);
-        let size = self.object.ob_size as usize;
+        let length = self.object.ob_size as usize;
 
-        let mut items = Vec::with_capacity(size);
-        for idx in 0..size {
-            let object_pointer: Pointer = (list_pointer + idx * Pointer::SIZE).try_deref_me(mem)?;
-            let object = object_pointer.try_deref_me(mem)?;
-            items.push(object)
-        }
-
-        Ok(items)
+        ListItems::new(mem, list_pointer, length)
     }
 }
 

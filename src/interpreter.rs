@@ -1,4 +1,5 @@
 use num_bigint::BigInt;
+use std::marker::PhantomData;
 
 use crate::error::{Error, Result};
 use crate::memory::Memory;
@@ -45,7 +46,7 @@ pub trait Interpreter: Copy + Clone + std::fmt::Debug {
     type FloatObject: FloatObject<Self> + TryDeref;
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Pointer {
     address: usize,
 }
@@ -202,14 +203,84 @@ pub trait UnicodeObject<I: Interpreter> {
     fn read(&self, mem: &impl Memory) -> Result<String>;
 }
 
+pub struct TupleItems<'a, I, M> {
+    mem: &'a M,
+    offset: Pointer,
+    end_pointer: Pointer,
+    _interp: PhantomData<I>,
+}
+
+impl<'a, I, M> TupleItems<'a, I, M> {
+    pub fn new(mem: &'a M, offset: Pointer, length: usize) -> Self {
+        Self {
+            mem,
+            offset,
+            end_pointer: offset + length * std::mem::size_of::<usize>(),
+            _interp: PhantomData,
+        }
+    }
+}
+
+impl<'a, I: Interpreter, M: Memory> Iterator for TupleItems<'a, I, M> {
+    type Item = Result<I::Object>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset.address < self.end_pointer.address {
+            let object = self
+                .offset
+                .try_deref_me(self.mem)
+                .and_then(|pointer: Pointer| pointer.try_deref_me(self.mem));
+            self.offset = self.offset + std::mem::size_of::<usize>();
+            Some(object)
+        } else {
+            None
+        }
+    }
+}
+
 pub trait TupleObject<I: Interpreter> {
     fn to_var_object(&self) -> I::VarObject;
-    fn items(&self, mem: &impl Memory) -> Result<Vec<I::Object>>;
+    fn items<'a, M: Memory>(&self, mem: &'a M) -> TupleItems<'a, I, M>;
+}
+
+pub struct ListItems<'a, I, M> {
+    mem: &'a M,
+    offset: Pointer,
+    end_pointer: Pointer,
+    _interp: PhantomData<I>,
+}
+
+impl<'a, I, M> ListItems<'a, I, M> {
+    pub fn new(mem: &'a M, offset: Pointer, length: usize) -> Self {
+        Self {
+            mem,
+            offset,
+            end_pointer: offset + length * std::mem::size_of::<usize>(),
+            _interp: PhantomData,
+        }
+    }
+}
+
+impl<'a, I: Interpreter, M: Memory> Iterator for ListItems<'a, I, M> {
+    type Item = Result<I::Object>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset.address < self.end_pointer.address {
+            let object = self
+                .offset
+                .try_deref_me(self.mem)
+                .and_then(|pointer: Pointer| pointer.try_deref_me(self.mem));
+            self.offset = self.offset + std::mem::size_of::<usize>();
+            Some(object)
+        } else {
+            None
+        }
+    }
 }
 
 pub trait ListObject<I: Interpreter> {
     fn to_var_object(&self) -> I::VarObject;
-    fn items(&self, mem: &impl Memory) -> Result<Vec<I::Object>>;
+    fn items<'a, M: Memory>(&self, mem: &'a M) -> ListItems<'a, I, M>;
 }
 
 pub trait DictEntry<I: Interpreter> {

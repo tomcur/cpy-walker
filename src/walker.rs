@@ -129,7 +129,11 @@ where
 
             let mut items = Vec::new();
 
-            for item in tuple.items(mem)? {
+            for item in tuple
+                .items(mem)
+                .take_while(Result::is_ok)
+                .map(Result::unwrap)
+            {
                 items.push(DataPointer(item.me().address()));
                 queue.push_back(item);
             }
@@ -141,7 +145,11 @@ where
 
             let mut items = Vec::new();
 
-            for item in list.items(mem)? {
+            for item in list
+                .items(mem)
+                .take_while(Result::is_ok)
+                .map(Result::unwrap)
+            {
                 items.push(DataPointer(item.me().address()));
                 queue.push_back(item);
             }
