@@ -14,16 +14,12 @@ pub trait Memory {
     /// `address` and `size` are in bytes.
     fn get_vec(&self, address: usize, size: usize) -> Result<Vec<u8>>;
 
-    fn get_u16_vec(&self, address: usize, size: usize) -> Result<Vec<u16>> {
-        if size % 2 != 0 {
-            return Err(Error::SegmentationFault(Box::new(
-                MemoryError::InvalidSize("must be multiple of 2".to_string()),
-            )));
-        }
-        let vec = self.get_vec(address, size)?;
-        let mut result = Vec::with_capacity(size / 2);
-        for idx in 0..size / 2 {
-            result.push(u16::from_le_bytes([vec[idx], vec[idx + 1]]))
+    /// Note: the length is the size in 2-bytes.
+    fn get_u16_vec(&self, address: usize, length: usize) -> Result<Vec<u16>> {
+        let vec = self.get_vec(address, length * 2)?;
+        let mut result = Vec::with_capacity(length);
+        for idx in 0..length {
+            result.push(u16::from_le_bytes([vec[idx * 2], vec[idx * 2 + 1]]))
         }
         Ok(result)
     }

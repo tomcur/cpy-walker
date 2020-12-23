@@ -658,18 +658,26 @@ impl<I: Interpreter<VarObject = PyVarObject<I>>> StringObject<I> for PySmallStri
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct PyUnicodeObject<I> {
     me: Pointer,
-    object: bindings::PyStringObject, // Hacky, we should get PyUnicodeObject in the bindings.
+    object: python27_sys::PyUnicodeObject,
     _interp: PhantomData<I>,
 }
 
-pub const PY_UNICODE_OBJECT_SIZE: usize = std::mem::size_of::<bindings::PyStringObject>();
+impl<I> std::fmt::Debug for PyUnicodeObject<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PyUnicodeObject")
+            .field("me", &self.me)
+            .finish()
+    }
+}
+
+pub const PY_UNICODE_OBJECT_SIZE: usize = std::mem::size_of::<python27_sys::PyUnicodeObject>();
 
 impl<I> PyUnicodeObject<I> {
     pub fn size(&self) -> isize {
-        self.object.ob_size
+        self.object.length
     }
 }
 
@@ -694,24 +702,31 @@ impl<I: Interpreter<Object = PyObject<I>>> UnicodeObject<I> for PyUnicodeObject<
             me: self.me,
             object: bindings::PyObject {
                 ob_refcnt: self.object.ob_refcnt,
-                ob_type: self.object.ob_type,
+                ob_type: self.object.ob_type as *mut bindings::_typeobject,
             },
             _interp: std::marker::PhantomData,
         }
     }
 
     fn read_bytes(&self, mem: &impl Memory) -> Result<Vec<u8>> {
+        let length = self.object.length as usize;
+        if length > 2_000 {
+            return Err(Error::SizeError);
+        }
+
         mem.get_vec(
-            (&self.object.ob_sval as *const [i8; 1]) as usize,
-            self.object.ob_size as usize,
+            // (&self.object.ob_sval as *const [i8; 1]) as usize,
+            self.object.data as usize,
+            length,
         )
     }
 
     fn read(&self, mem: &impl Memory) -> Result<String> {
-        let bytes = mem.get_u16_vec(
-            (&self.object.ob_sval as *const [i8; 1]) as usize,
-            self.object.ob_size as usize,
-        )?;
+        let length = self.object.length as usize;
+        if length > 2_000 {
+            return Err(Error::SizeError);
+        }
+        let bytes = mem.get_u16_vec(self.object.data as usize, length)?;
 
         Ok(String::from_utf16_lossy(&bytes))
     }
