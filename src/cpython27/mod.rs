@@ -1068,10 +1068,11 @@ impl<I: Interpreter<Object = PyObject<I>>> FloatObject<I> for PyFloatObject<I> {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::bail;
     use std::io::{BufRead, BufReader};
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
+
+    use anyhow::bail;
 
     use super::*;
     use crate::walker::{walk, DataPointer, DecodedData};
@@ -1101,7 +1102,7 @@ mod tests {
         let graph = walk::<Cpython2_7, _>(&mem, ptr);
 
         if let Some(DecodedData::List(list)) = graph.get(&DataPointer(pointer)) {
-            assert_eq!(list.len(), 3);
+            assert_eq!(list.len(), 4);
             match graph.get(&list[0]) {
                 Some(&DecodedData::String(ref str)) => assert_eq!(str, "hello world"),
                 _ => bail!("Expected a string"),
@@ -1126,6 +1127,25 @@ mod tests {
                     }
                 }
                 _ => bail!("Expected an instance"),
+            }
+            match graph.get(&list[3]) {
+                Some(&DecodedData::Tuple(ref items)) => {
+                    assert_eq!(items.len(), 2);
+
+                    match graph.get(&items[0]) {
+                        Some(&DecodedData::Int(ref int)) => {
+                            assert_eq!(int, &num_bigint::BigInt::from(22))
+                        }
+                        _ => bail!("Expected an int"),
+                    }
+                    match graph.get(&items[1]) {
+                        Some(&DecodedData::Int(ref int)) => {
+                            assert_eq!(int, &num_bigint::BigInt::from(1000))
+                        }
+                        _ => bail!("Expected an int"),
+                    }
+                }
+                _ => bail!("Expected a tuple"),
             }
         } else {
             bail!("Expected a list")

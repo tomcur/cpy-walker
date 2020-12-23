@@ -9,7 +9,7 @@ class Something:
 
 
 if __name__ == "__main__":
-    entry = ["hello world", 42, Something("I'm here!")]
+    entry = ["hello world", 42, Something("I'm here!"), (22, 1000)]
     print(id(entry))
 
     sys.stdout.flush()
